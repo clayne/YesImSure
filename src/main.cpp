@@ -4,6 +4,7 @@
 #include <ShlObj.h>  // CSIDL_MYDOCUMENTS
 
 #include "Hooks.h"  // InstallHooks
+#include "Settings.h"  // Settings
 #include "version.h"  // VERSION_VERSTRING, VERSION_MAJOR
 
 #include "SKSE/API.h"
@@ -41,6 +42,15 @@ extern "C" {
 		if (!SKSE::Init(a_skse)) {
 			return false;
 		}
+
+		if (!Settings::loadSettings()) {
+			_FATALERROR("[FATALERROR] Failed to load settings!\n");
+			return false;
+		}
+
+#if _DEBUG
+		Settings::dump();
+#endif
 
 		if (!g_localTrampoline.Create(1024 * 8)) {
 			_FATALERROR("[FATALERROR] Failed to create local trampoline!\n");
