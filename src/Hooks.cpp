@@ -199,7 +199,7 @@ namespace
 		char* msg = new char[len];
 		std::snprintf(msg, len, a_fmt, name);
 		RE::DebugNotification(msg);
-		delete msg;
+		delete[] msg;
 	}
 
 
