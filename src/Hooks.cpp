@@ -85,6 +85,36 @@ namespace
 	}
 
 
+	RE::InventoryEntryData* GetEquippedEntryData(RE::ActorProcessManager* a_processManager, bool a_leftHand)
+	{
+		auto middleProcess = a_processManager->middleProcess;
+		if (!middleProcess) {
+			return 0;
+		}
+
+		auto hand = middleProcess->rightHand;
+		if (hand && hand->type && hand->type->Is(RE::FormType::Weapon)) {
+			if (!hand->extraList) {
+				return hand;
+			}
+
+			bool applied = false;
+			for (auto& xList : *hand->extraList) {
+				if (xList->HasType(RE::ExtraDataType::kPoison)) {
+					applied = true;
+					break;
+				}
+			}
+
+			if (!applied) {
+				return hand;
+			}
+		}
+
+		return middleProcess->leftHand ? middleProcess->leftHand : middleProcess->rightHand;
+	}
+
+
 	void InstallPoisonPatch()
 	{
 		// E8 ? ? ? ? E9 ? ? ? ? 48 8D 55 CC
@@ -184,6 +214,18 @@ namespace
 
 			for (std::size_t i = CAVE_START + patch.getSize(); i < CAVE_END; ++i) {
 				SafeWrite8(funcBase.GetAddress() + i, NOP);
+			}
+		}
+
+		// Fix for applying poison to left hand
+		{
+			g_branchTrampoline.Write5Call(funcBase.GetAddress() + 0x2F, unrestricted_cast<std::uintptr_t>(&GetEquippedEntryData));
+
+			{
+				// 40 53 48 83 EC 60 48 8B 05 ? ? ? ? 48 83 B8 68 09 00 00 00
+				constexpr std::uintptr_t FUNC_ADDR = 0x006A1E30;	// 1_5_80
+				REL::Offset<std::uintptr_t> funcBase(FUNC_ADDR);
+				g_branchTrampoline.Write5Call(funcBase.GetAddress() + 0x32, unrestricted_cast<std::uintptr_t>(&GetEquippedEntryData));
 			}
 		}
 

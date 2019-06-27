@@ -1,4 +1,4 @@
-﻿#include "skse64_common/BranchTrampoline.h"  // g_branchTrampoline
+﻿#include "skse64_common/BranchTrampoline.h"  // g_localTrampoline, g_branchTrampoline
 #include "skse64_common/skse_version.h"  // RUNTIME_VERSION
 
 #include "Hooks.h"  // InstallHooks
@@ -56,8 +56,13 @@ extern "C" {
 		Settings::dump();
 #endif
 
-		if (!g_localTrampoline.Create(1024 * 8)) {
+		if (!g_localTrampoline.Create(1024 * 1)) {
 			_FATALERROR("[FATALERROR] Failed to create local trampoline!\n");
+			return false;
+		}
+
+		if (!g_branchTrampoline.Create(1024 * 1)) {
+			_FATALERROR("[FATALERROR] Failed to create branch trampoline!\n");
 			return false;
 		}
 
