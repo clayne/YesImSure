@@ -229,7 +229,7 @@ namespace
 			}
 		}
 
-		_MESSAGE("[MESSAGE] Installled poison patch");
+		_MESSAGE("Installled poison patch");
 	}
 
 
@@ -316,7 +316,7 @@ namespace
 			}
 		}
 
-		_MESSAGE("[MESSAGE] Installled enchantment learned patch");
+		_MESSAGE("Installled enchantment learned patch");
 	}
 
 
@@ -347,7 +347,7 @@ void InstallHooks()
 		constexpr std::size_t JUMP_OUT = 0x192;
 		auto fnAddr = GetFnAddr(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::ConstructibleObjectMenu, SKIP_FUNC>);
 		InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-		_MESSAGE("[MESSAGE] Installled constructible object menu patch");
+		_MESSAGE("Installled constructible object menu patch");
 	}
 
 	if (Settings::alchemyMenuPatch) {
@@ -360,7 +360,7 @@ void InstallHooks()
 		constexpr std::size_t JUMP_OUT = 0x2AB;
 		auto fnAddr = GetFnAddr(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::AlchemyMenu, SKIP_FUNC>);
 		InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-		_MESSAGE("[MESSAGE] Installled alchemy menu patch");
+		_MESSAGE("Installled alchemy menu patch");
 	}
 
 	if (Settings::smithingMenuPatch) {
@@ -373,7 +373,7 @@ void InstallHooks()
 		constexpr std::size_t JUMP_OUT = 0x1E5;
 		auto fnAddr = GetFnAddr(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::SmithingMenu, SKIP_FUNC>);
 		InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-		_MESSAGE("[MESSAGE] Installled smithing menu patch");
+		_MESSAGE("Installled smithing menu patch");
 	}
 
 	if (Settings::enchantmentLearnedPatch) {
@@ -392,7 +392,7 @@ void InstallHooks()
 			constexpr std::size_t JUMP_OUT = 0x260;
 			auto fnAddr = GetFnAddr(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-			_MESSAGE("[MESSAGE] Installled enchantment crafted patch");
+			_MESSAGE("Installled enchantment crafted patch");
 		}
 
 		if (Settings::enchantingMenuExitPatch) {
@@ -401,7 +401,7 @@ void InstallHooks()
 			constexpr std::size_t JUMP_OUT = 0x111;
 			auto fnAddr = GetFnAddr(CloseEnchantingMenu);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-			_MESSAGE("[MESSAGE] Installled enchanting menu exit patch");
+			_MESSAGE("Installled enchanting menu exit patch");
 		}
 	}
 
