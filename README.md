@@ -3,6 +3,7 @@
 ## Build Dependencies
 * [SKSE64](https://skse.silverlock.org/)
 * [CommonLibSSE](https://github.com/Ryan-rsm-McKenzie/CommonLibSSE)
+* [Json2Settings](https://github.com/Ryan-rsm-McKenzie/Json2Settings)
 
 ## End User Dependencies
 * [SKSE64](https://skse.silverlock.org/)
