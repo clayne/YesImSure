@@ -1,6 +1,6 @@
 #include "settings.h"
 
-#include "Json2Settings.h"  // Json2Settings
+#include "Json2Settings.h"
 
 
 bool Settings::loadSettings(bool a_dumpParse)

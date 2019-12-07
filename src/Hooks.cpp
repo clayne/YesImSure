@@ -1,15 +1,14 @@
 #include "Hooks.h"
 
-#include "skse64_common/BranchTrampoline.h"  // g_localTrampoline
-#include "skse64_common/SafeWrite.h"  // SafeWrite8
-#include "skse64_common/Utilities.h"  // GetFnAddr
-#include "skse64/GameRTTI.h"  // Runtime_DynamicCast
-#include "xbyak/xbyak.h"  // xbyak
+#include "skse64_common/BranchTrampoline.h"
+#include "skse64_common/SafeWrite.h"
+#include "xbyak/xbyak.h"
 
-#include <cassert>  // assert
-#include <cstdio>  // snprintf
+#include <cassert>
+#include <cstdio>
+#include <memory>
 
-#include "Settings.h"  // Settings
+#include "Settings.h"
 
 #include "RE/Skyrim.h"
 #include "REL/Relocation.h"
@@ -78,9 +77,8 @@ namespace
 		auto mm = RE::MenuManager::GetSingleton();
 		auto uiStrHolder = RE::UIStringHolder::GetSingleton();
 		auto invMenu = mm->GetMenu<RE::InventoryMenu>(uiStrHolder->inventoryMenu);
-		if (invMenu && invMenu->inventoryData) {
-			auto player = RE::PlayerCharacter::GetSingleton();
-			invMenu->inventoryData->Update(player);
+		if (invMenu && invMenu->itemList) {
+			invMenu->itemList->Update();
 		}
 	}
 
@@ -118,7 +116,7 @@ namespace
 	void InstallPoisonPatch()
 	{
 		// E8 ? ? ? ? E9 ? ? ? ? 48 8D 55 CC
-		constexpr std::uintptr_t FUNC_ADDR = 0x006A1CC0;	// 1_5_73
+		constexpr std::uintptr_t FUNC_ADDR = 0x006A1CC0;	// 1_5_97
 		constexpr std::size_t JUMP_OUT = 0x148;
 		constexpr UInt8 NOP = 0x90;
 
@@ -161,7 +159,7 @@ namespace
 			};
 
 			void* patchBuf = g_localTrampoline.StartAlloc();
-			Patch patch(patchBuf, GetFnAddr(RefreshInventoryMenu), funcBase.GetAddress() + JUMP_OUT);
+			Patch patch(patchBuf, unrestricted_cast<std::uintptr_t>(RefreshInventoryMenu), funcBase.GetAddress() + JUMP_OUT);
 			g_localTrampoline.EndAlloc(patch.getCurr());
 
 			assert(patch.getSize() <= CAVE_SIZE);
@@ -223,7 +221,7 @@ namespace
 
 			{
 				// 40 53 48 83 EC 60 48 8B 05 ? ? ? ? 48 83 B8 68 09 00 00 00
-				constexpr std::uintptr_t FUNC_ADDR = 0x006A1E30;	// 1_5_80
+				constexpr std::uintptr_t FUNC_ADDR = 0x006A1E30;	// 1_5_97
 				REL::Offset<std::uintptr_t> funcBase(FUNC_ADDR);
 				g_branchTrampoline.Write5Call(funcBase.GetAddress() + 0x32, unrestricted_cast<std::uintptr_t>(&GetEquippedEntryData));
 			}
@@ -236,19 +234,18 @@ namespace
 	void NotifyEnchantmentLearned(const char* a_fmt, RE::TESForm* a_item)
 	{
 		auto fullName = skyrim_cast<RE::TESFullName*>(a_item);
-		const char* name = fullName ? fullName->GetName() : "";
+		auto name = fullName ? fullName->GetFullName() : "";
 		std::size_t len = std::snprintf(0, 0, a_fmt, name) + 1;
-		char* msg = new char[len];
-		std::snprintf(msg, len, a_fmt, name);
-		RE::DebugNotification(msg);
-		delete[] msg;
+		std::unique_ptr<char[]> msg(new char[len]);
+		std::snprintf(msg.get(), len, a_fmt, name);
+		RE::DebugNotification(msg.get());
 	}
 
 
 	void InstallEnchantmentLearnedPatch()
 	{
 		// E9 ? ? ? ? 48 8B 41 10 8B 88 08 02 00 00
-		constexpr std::uintptr_t SKIP_FUNC = 0x0086D830;	// 1_5_73
+		constexpr std::uintptr_t SKIP_FUNC = 0x0086D830;	// 1_5_97
 		constexpr std::size_t JUMP_OUT = 0x1EB;
 		constexpr UInt8 NOP = 0x90;
 
@@ -257,11 +254,11 @@ namespace
 		// skip "are you sure?"
 		{
 			// 40 57 41 54 41 55 41 56 41 57 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 89 5C 24 68 48 89 6C 24 70 48 89 74 24 78 8B EA
-			constexpr std::uintptr_t CALL_FUNC = 0x0086B200;	// 1_5_73
+			constexpr std::uintptr_t CALL_FUNC = 0x0086B200;	// 1_5_97
 			constexpr std::size_t CAVE_START = 0xBB;
 			constexpr std::size_t CAVE_END = 0x1D3;
 			constexpr std::size_t JUMP_OUT = 0x38D;
-			auto fnAddr = GetFnAddr(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
+			auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 		}
 
@@ -302,7 +299,7 @@ namespace
 			};
 
 			void* patchBuf = g_localTrampoline.StartAlloc();
-			Patch patch(patchBuf, GetFnAddr(NotifyEnchantmentLearned), funcBase.GetAddress() + JUMP_OUT);
+			Patch patch(patchBuf, unrestricted_cast<std::uintptr_t>(NotifyEnchantmentLearned), funcBase.GetAddress() + JUMP_OUT);
 			g_localTrampoline.EndAlloc(patch.getCurr());
 
 			assert(patch.getSize() <= CAVE_SIZE);
@@ -339,39 +336,39 @@ void InstallHooks()
 {
 	if (Settings::constructibleObjectMenuPatch) {
 		// 40 57 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 89 5C 24 48 48 89 6C 24 50 48 89 74 24 58 83 79 30 00
-		constexpr std::uintptr_t CALL_FUNC = 0x0086CC10;	// 1_5_73
+		constexpr std::uintptr_t CALL_FUNC = 0x0086CC10;	// 1_5_97
 		// 40 53 55 56 57 41 56 48 83 EC 60 48 C7 44 24 30 FE FF FF FF
-		constexpr std::uintptr_t SKIP_FUNC = 0x0086E2C0;	// 1_5_73
+		constexpr std::uintptr_t SKIP_FUNC = 0x0086E2C0;	// 1_5_97
 		constexpr std::size_t CAVE_START = 0x5F;
 		constexpr std::size_t CAVE_END = 0x174;
 		constexpr std::size_t JUMP_OUT = 0x192;
-		auto fnAddr = GetFnAddr(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::ConstructibleObjectMenu, SKIP_FUNC>);
+		auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::ConstructibleObjectMenu, SKIP_FUNC>);
 		InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 		_MESSAGE("Installled constructible object menu patch");
 	}
 
 	if (Settings::alchemyMenuPatch) {
 		// 48 8B C4 55 56 57 48 83 EC 60 48 C7 40 C8 FE FF FF FF 48 89 58 08
-		constexpr std::uintptr_t CALL_FUNC = 0x0086EBB0;	// 1_5_73
+		constexpr std::uintptr_t CALL_FUNC = 0x0086EBB0;	// 1_5_97
 		// E8 ? ? ? ? E9 ? ? ? ? 48 85 C9 0F 84 ? ? ? ? 48 8B 01
-		constexpr std::uintptr_t SKIP_FUNC = 0x0086B810;	// 1_5_73
+		constexpr std::uintptr_t SKIP_FUNC = 0x0086B810;	// 1_5_97
 		constexpr std::size_t CAVE_START = 0x138;
 		constexpr std::size_t CAVE_END = 0x2A9;
 		constexpr std::size_t JUMP_OUT = 0x2AB;
-		auto fnAddr = GetFnAddr(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::AlchemyMenu, SKIP_FUNC>);
+		auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::AlchemyMenu, SKIP_FUNC>);
 		InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 		_MESSAGE("Installled alchemy menu patch");
 	}
 
 	if (Settings::smithingMenuPatch) {
 		// 40 57 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 89 5C 24 48 48 89 6C 24 50 48 89 74 24 58 48 8B E9 8B 81 54 01 00 00
-		constexpr std::uintptr_t CALL_FUNC = 0x0086CA10;	// 1_5_73
+		constexpr std::uintptr_t CALL_FUNC = 0x0086CA10;	// 1_5_97
 		// 48 8B C4 56 57 41 56 48 83 EC 70 48 C7 40 B8 FE FF FF FF 48 89 58 18 48 89 68 20 48 8B F1
-		constexpr std::uintptr_t SKIP_FUNC = 0x0086E490;	// 1_5_73
+		constexpr std::uintptr_t SKIP_FUNC = 0x0086E490;	// 1_5_97
 		constexpr std::size_t CAVE_START = 0x7C;
 		constexpr std::size_t CAVE_END = 0x191;
 		constexpr std::size_t JUMP_OUT = 0x1E5;
-		auto fnAddr = GetFnAddr(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::SmithingMenu, SKIP_FUNC>);
+		auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::SmithingMenu, SKIP_FUNC>);
 		InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 		_MESSAGE("Installled smithing menu patch");
 	}
@@ -382,15 +379,15 @@ void InstallHooks()
 
 	{
 		// 40 57 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 89 5C 24 48 48 89 6C 24 50 48 89 74 24 58 48 8B F9 0F B6 81 1D 02 00 00
-		constexpr std::uintptr_t CALL_FUNC = 0x0086EE80;	// 1_5_73
+		constexpr std::uintptr_t CALL_FUNC = 0x0086EE80;	// 1_5_97
 
 		if (Settings::enchantmentCraftedPatch) {
 			// 40 55 56 57 41 54 41 55 41 56 41 57 48 81 EC 80 00 00 00 48 C7 44 24 50 FE FF FF FF
-			constexpr std::uintptr_t SKIP_FUNC = 0x0086C640;	// 1_5_73
+			constexpr std::uintptr_t SKIP_FUNC = 0x0086C640;	// 1_5_97
 			constexpr std::size_t CAVE_START = 0x160;
 			constexpr std::size_t CAVE_END = 0x1FD;
 			constexpr std::size_t JUMP_OUT = 0x260;
-			auto fnAddr = GetFnAddr(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
+			auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 			_MESSAGE("Installled enchantment crafted patch");
 		}
@@ -399,7 +396,7 @@ void InstallHooks()
 			constexpr std::size_t CAVE_START = 0x74;
 			constexpr std::size_t CAVE_END = 0x111;
 			constexpr std::size_t JUMP_OUT = 0x111;
-			auto fnAddr = GetFnAddr(CloseEnchantingMenu);
+			auto fnAddr = unrestricted_cast<std::uintptr_t>(CloseEnchantingMenu);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 			_MESSAGE("Installled enchanting menu exit patch");
 		}

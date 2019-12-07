@@ -1,9 +1,9 @@
-﻿#include "skse64_common/BranchTrampoline.h"  // g_localTrampoline, g_branchTrampoline
-#include "skse64_common/skse_version.h"  // RUNTIME_VERSION
+﻿#include "skse64_common/BranchTrampoline.h"
+#include "skse64_common/skse_version.h"
 
-#include "Hooks.h"  // InstallHooks
-#include "Settings.h"  // Settings
-#include "version.h"  // VERSION_VERSTRING, VERSION_MAJOR
+#include "Hooks.h"
+#include "Settings.h"
+#include "version.h"
 
 #include "SKSE/API.h"
 
@@ -28,11 +28,10 @@ extern "C" {
 		}
 
 		switch (a_skse->RuntimeVersion()) {
-		case RUNTIME_VERSION_1_5_73:
-		case RUNTIME_VERSION_1_5_80:
+		case RUNTIME_VERSION_1_5_97:
 			break;
 		default:
-			_FATALERROR("Unsupported runtime version %08X!\n", a_skse->RuntimeVersion());
+			_FATALERROR("Unsupported runtime version %s!\n", a_skse->UnmangledRuntimeVersion());
 			return false;
 		}
 
