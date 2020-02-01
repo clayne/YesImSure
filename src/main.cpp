@@ -1,7 +1,4 @@
-﻿#include "skse64_common/BranchTrampoline.h"
-#include "skse64_common/skse_version.h"
-
-#include "Hooks.h"
+﻿#include "Hooks.h"
 #include "Settings.h"
 #include "version.h"
 
@@ -15,6 +12,7 @@ extern "C" {
 		SKSE::Logger::SetPrintLevel(SKSE::Logger::Level::kDebugMessage);
 		SKSE::Logger::SetFlushLevel(SKSE::Logger::Level::kDebugMessage);
 		SKSE::Logger::UseLogStamp(true);
+		SKSE::Logger::TrackTrampolineStats(true);
 
 		_MESSAGE("YesImSure v%s", YISR_VERSION_VERSTRING);
 
@@ -31,7 +29,7 @@ extern "C" {
 		case RUNTIME_VERSION_1_5_97:
 			break;
 		default:
-			_FATALERROR("Unsupported runtime version %s!\n", a_skse->UnmangledRuntimeVersion());
+			_FATALERROR("Unsupported runtime version %s!\n", a_skse->UnmangledRuntimeVersion().c_str());
 			return false;
 		}
 
@@ -47,27 +45,16 @@ extern "C" {
 			return false;
 		}
 
-		if (!Settings::loadSettings()) {
+		if (!Settings::LoadSettings()) {
 			_FATALERROR("Failed to load settings!\n");
 			return false;
 		}
 
-#if _DEBUG
-		Settings::dump();
-#endif
-
-		if (!g_localTrampoline.Create(1024 * 1)) {
-			_FATALERROR("Failed to create local trampoline!\n");
+		if (!SKSE::AllocTrampoline(1 << 10)) {
 			return false;
 		}
 
-		if (!g_branchTrampoline.Create(1024 * 1)) {
-			_FATALERROR("Failed to create branch trampoline!\n");
-			return false;
-		}
-
-		InstallHooks();
-		_MESSAGE("Installed hooks");
+		Hooks::Install();
 
 		return true;
 	}
