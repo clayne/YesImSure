@@ -48,7 +48,7 @@ extern "C" {
 			return false;
 		}
 
-		if (!SKSE::AllocTrampoline(1 << 10)) {
+		if (!SKSE::AllocTrampoline(1 << 8)) {
 			return false;
 		}
 
