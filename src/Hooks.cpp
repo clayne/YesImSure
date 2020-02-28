@@ -1,8 +1,5 @@
 #include "Hooks.h"
 
-#include "skse64_common/SafeWrite.h"
-#include "xbyak/xbyak.h"
-
 #include <cassert>
 #include <cstdio>
 #include <memory>
@@ -12,17 +9,19 @@
 #include "RE/Skyrim.h"
 #include "REL/Relocation.h"
 #include "SKSE/API.h"
+#include "SKSE/CodeGenerator.h"
+#include "SKSE/SafeWrite.h"
 
 
 namespace Hooks
 {
 	namespace
 	{
-		template <class T, std::uintptr_t FUNC_ADDR>
+		template <class T, std::uint64_t FUNC_ID>
 		void SkipSubMenuMenuPrompt()
 		{
 			using func_t = void(T*);
-			REL::Offset<func_t*> func(FUNC_ADDR);
+			REL::Offset<func_t*> func = REL::ID(FUNC_ID);
 
 			auto ui = RE::UI::GetSingleton();
 			auto craftingMenu = ui->GetMenu<RE::CraftingMenu>();
@@ -31,17 +30,17 @@ namespace Hooks
 		}
 
 
-		template <std::uintptr_t FUNC_ADDR, std::size_t CAVE_START, std::size_t CAVE_END, std::size_t JUMP_OUT>
+		template <std::uint64_t FUNC_ID, std::size_t CAVE_START, std::size_t CAVE_END, std::size_t JUMP_OUT>
 		void InstallSubMenuPatch(std::uintptr_t a_skipFuncAddr)
 		{
 			constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
 			constexpr UInt8 NOP = 0x90;
 
-			REL::Offset<std::uintptr_t> funcBase(FUNC_ADDR);
+			REL::Offset<std::uintptr_t> funcBase = REL::ID(FUNC_ID);
 
-			struct Patch : Xbyak::CodeGenerator
+			struct Patch : SKSE::CodeGenerator
 			{
-				Patch(std::size_t a_maxSize, void* a_buf, std::size_t a_callAddr, std::size_t a_retAddr) : Xbyak::CodeGenerator(a_maxSize, a_buf)
+				Patch(std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator()
 				{
 					Xbyak::Label callLbl;
 					Xbyak::Label retLbl;
@@ -57,19 +56,15 @@ namespace Hooks
 				}
 			};
 
-			auto trampoline = SKSE::GetTrampoline();
-			auto patchBuf = trampoline->StartAlloc();
-			Patch patch(trampoline->FreeSize(), patchBuf, a_skipFuncAddr, funcBase.GetAddress() + JUMP_OUT);
-			trampoline->EndAlloc(patch.getSize());
-
-			assert(patch.getSize() <= CAVE_SIZE);
+			Patch patch(a_skipFuncAddr, funcBase.GetAddress() + JUMP_OUT);
+			patch.finalize();
 
 			for (std::size_t i = 0; i < patch.getSize(); ++i) {
-				SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
+				SKSE::SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
 			}
 
 			for (std::size_t i = CAVE_START + patch.getSize(); i < CAVE_END; ++i) {
-				SafeWrite8(funcBase.GetAddress() + i, NOP);
+				SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
 			}
 		}
 
@@ -116,12 +111,10 @@ namespace Hooks
 
 		void InstallPoisonPatch()
 		{
-			// E8 ? ? ? ? E9 ? ? ? ? 48 8D 55 CC
-			constexpr std::uintptr_t FUNC_ADDR = 0x006A1CC0;	// 1_5_97
 			constexpr std::size_t JUMP_OUT = 0x148;
 			constexpr UInt8 NOP = 0x90;
 
-			REL::Offset<std::uintptr_t> funcBase(FUNC_ADDR);
+			REL::Offset<std::uintptr_t> funcBase = REL::ID(39406);
 
 			// nop until callback gets loaded
 			{
@@ -129,7 +122,7 @@ namespace Hooks
 				constexpr std::size_t CAVE_END = 0xD7;
 
 				for (std::size_t i = CAVE_START; i < CAVE_END; ++i) {
-					SafeWrite8(funcBase.GetAddress() + i, NOP);
+					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
 				}
 			}
 
@@ -139,9 +132,9 @@ namespace Hooks
 				constexpr std::size_t CAVE_END = 0x112;
 				constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
 
-				struct Patch : Xbyak::CodeGenerator
+				struct Patch : SKSE::CodeGenerator
 				{
-					Patch(std::size_t a_maxSize, void* a_buf, std::size_t a_callAddr, std::size_t a_retAddr) : Xbyak::CodeGenerator(a_maxSize, a_buf)
+					Patch(std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(CAVE_SIZE)
 					{
 						Xbyak::Label callLbl;
 						Xbyak::Label retLbl;
@@ -159,19 +152,15 @@ namespace Hooks
 					}
 				};
 
-				auto trampoline = SKSE::GetTrampoline();
-				auto patchBuf = trampoline->StartAlloc();
-				Patch patch(trampoline->FreeSize(), patchBuf, unrestricted_cast<std::uintptr_t>(&RefreshInventoryMenu), funcBase.GetAddress() + JUMP_OUT);
-				trampoline->EndAlloc(patch.getSize());
-
-				assert(patch.getSize() <= CAVE_SIZE);
+				Patch patch(unrestricted_cast<std::uintptr_t>(&RefreshInventoryMenu), funcBase.GetAddress() + JUMP_OUT);
+				patch.finalize();
 
 				for (std::size_t i = 0; i < patch.getSize(); ++i) {
-					SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
+					SKSE::SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
 				}
 
 				for (std::size_t i = CAVE_START + patch.getSize(); i < CAVE_END; ++i) {
-					SafeWrite8(funcBase.GetAddress() + i, NOP);
+					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
 				}
 			}
 
@@ -181,9 +170,9 @@ namespace Hooks
 				constexpr std::size_t CAVE_END = 0x148;
 				constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
 
-				struct Patch : Xbyak::CodeGenerator
+				struct Patch : SKSE::CodeGenerator
 				{
-					Patch(std::size_t a_maxSize, void* a_buf, std::size_t a_callAddr, std::size_t a_retAddr) : Xbyak::CodeGenerator(a_maxSize, a_buf)
+					Patch(std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(CAVE_SIZE)
 					{
 						Xbyak::Label callLbl;
 						Xbyak::Label retLbl;
@@ -201,20 +190,16 @@ namespace Hooks
 					}
 				};
 
-				auto trampoline = SKSE::GetTrampoline();
-				auto patchBuf = trampoline->StartAlloc();
 				REL::Offset<std::uintptr_t> dbgNotif(RE::Offset::DebugNotification);
-				Patch patch(trampoline->FreeSize(), patchBuf, dbgNotif.GetAddress(), funcBase.GetAddress() + JUMP_OUT);
-				trampoline->EndAlloc(patch.getSize());
-
-				assert(patch.getSize() <= CAVE_SIZE);
+				Patch patch(dbgNotif.GetAddress(), funcBase.GetAddress() + JUMP_OUT);
+				patch.finalize();
 
 				for (std::size_t i = 0; i < patch.getSize(); ++i) {
-					SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
+					SKSE::SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
 				}
 
 				for (std::size_t i = CAVE_START + patch.getSize(); i < CAVE_END; ++i) {
-					SafeWrite8(funcBase.GetAddress() + i, NOP);
+					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
 				}
 			}
 
@@ -224,9 +209,7 @@ namespace Hooks
 				trampoline->Write5Call(funcBase.GetAddress() + 0x2F, &GetEquippedEntryData);
 
 				{
-					// 40 53 48 83 EC 60 48 8B 05 ? ? ? ? 48 83 B8 68 09 00 00 00
-					constexpr std::uintptr_t FUNC_ADDR = 0x006A1E30;	// 1_5_97
-					REL::Offset<std::uintptr_t> funcBase(FUNC_ADDR);
+					REL::Offset<std::uintptr_t> funcBase = REL::ID(39407);
 					trampoline->Write5Call(funcBase.GetAddress() + 0x32, &GetEquippedEntryData);
 				}
 			}
@@ -240,7 +223,7 @@ namespace Hooks
 			auto fullName = a_item->As<RE::TESFullName>();
 			auto name = fullName ? fullName->GetFullName() : "";
 			std::size_t len = std::snprintf(0, 0, a_fmt, name) + 1;
-			std::unique_ptr<char[]> msg(new char[len]);
+			auto msg = std::make_unique<char[]>(len);
 			std::snprintf(msg.get(), len, a_fmt, name);
 			RE::DebugNotification(msg.get());
 		}
@@ -248,17 +231,15 @@ namespace Hooks
 
 		void InstallEnchantmentLearnedPatch()
 		{
-			// E9 ? ? ? ? 48 8B 41 10 8B 88 08 02 00 00
-			constexpr std::uintptr_t SKIP_FUNC = 0x0086D830;	// 1_5_97
+			constexpr std::uint64_t SKIP_FUNC = 50459;
 			constexpr std::size_t JUMP_OUT = 0x1EB;
 			constexpr UInt8 NOP = 0x90;
 
-			REL::Offset<std::uintptr_t> funcBase(SKIP_FUNC);
+			REL::Offset<std::uintptr_t> funcBase = REL::ID(SKIP_FUNC);
 
 			// skip "are you sure?"
 			{
-				// 40 57 41 54 41 55 41 56 41 57 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 89 5C 24 68 48 89 6C 24 70 48 89 74 24 78 8B EA
-				constexpr std::uintptr_t CALL_FUNC = 0x0086B200;	// 1_5_97
+				constexpr std::uint64_t CALL_FUNC = 50440;
 				constexpr std::size_t CAVE_START = 0xBB;
 				constexpr std::size_t CAVE_END = 0x1D3;
 				constexpr std::size_t JUMP_OUT = 0x38D;
@@ -272,7 +253,7 @@ namespace Hooks
 				constexpr std::size_t CAVE_END = 0x1A7;
 
 				for (std::size_t i = CAVE_START; i < CAVE_END; ++i) {
-					SafeWrite8(funcBase.GetAddress() + i, NOP);
+					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
 				}
 			}
 
@@ -282,9 +263,9 @@ namespace Hooks
 				constexpr std::size_t CAVE_END = 0x1EB;
 				constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
 
-				struct Patch : Xbyak::CodeGenerator
+				struct Patch : SKSE::CodeGenerator
 				{
-					Patch(std::size_t a_maxSize, void* a_buf, std::size_t a_callAddr, std::size_t a_retAddr) : Xbyak::CodeGenerator(a_maxSize, a_buf)
+					Patch(std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(CAVE_SIZE)
 					{
 						Xbyak::Label callLbl;
 						Xbyak::Label retLbl;
@@ -302,19 +283,15 @@ namespace Hooks
 					}
 				};
 
-				auto trampoline = SKSE::GetTrampoline();
-				auto patchBuf = trampoline->StartAlloc();
-				Patch patch(trampoline->FreeSize(), patchBuf, unrestricted_cast<std::uintptr_t>(NotifyEnchantmentLearned), funcBase.GetAddress() + JUMP_OUT);
-				trampoline->EndAlloc(patch.getCurr());
-
-				assert(patch.getSize() <= CAVE_SIZE);
+				Patch patch(unrestricted_cast<std::uintptr_t>(NotifyEnchantmentLearned), funcBase.GetAddress() + JUMP_OUT);
+				patch.finalize();
 
 				for (std::size_t i = 0; i < patch.getSize(); ++i) {
-					SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
+					SKSE::SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
 				}
 
 				for (std::size_t i = CAVE_START + patch.getSize(); i < CAVE_END; ++i) {
-					SafeWrite8(funcBase.GetAddress() + i, NOP);
+					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
 				}
 			}
 
@@ -324,15 +301,13 @@ namespace Hooks
 
 		void CloseEnchantingMenu()
 		{
-			using Message = RE::UI_MESSAGE_TYPE;
-
 			auto uiStr = RE::InterfaceStrings::GetSingleton();
 			auto factory = RE::MessageDataFactoryManager::GetSingleton();
 			auto creator = factory->GetCreator<RE::BSUIMessageData>(uiStr->bsUIMessageData);
 			auto msg = creator->Create();
 			msg->fixedStr = "Cancel";
 			auto uiQueue = RE::UIMessageQueue::GetSingleton();
-			uiQueue->AddMessage(uiStr->craftingMenu, Message::kUserEvent, msg);
+			uiQueue->AddMessage(uiStr->craftingMenu, RE::UI_MESSAGE_TYPE::kUserEvent, msg);
 		}
 	}
 
@@ -340,10 +315,8 @@ namespace Hooks
 	void Install()
 	{
 		if (*Settings::constructibleObjectMenuPatch) {
-			// 40 57 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 89 5C 24 48 48 89 6C 24 50 48 89 74 24 58 83 79 30 00
-			constexpr std::uintptr_t CALL_FUNC = 0x0086CC10;	// 1_5_97
-			// 40 53 55 56 57 41 56 48 83 EC 60 48 C7 44 24 30 FE FF FF FF
-			constexpr std::uintptr_t SKIP_FUNC = 0x0086E2C0;	// 1_5_97
+			constexpr std::uint64_t CALL_FUNC = 50452;
+			constexpr std::uint64_t SKIP_FUNC = 50476;
 			constexpr std::size_t CAVE_START = 0x5F;
 			constexpr std::size_t CAVE_END = 0x174;
 			constexpr std::size_t JUMP_OUT = 0x192;
@@ -353,10 +326,8 @@ namespace Hooks
 		}
 
 		if (*Settings::alchemyMenuPatch) {
-			// 48 8B C4 55 56 57 48 83 EC 60 48 C7 40 C8 FE FF FF FF 48 89 58 08
-			constexpr std::uintptr_t CALL_FUNC = 0x0086EBB0;	// 1_5_97
-			// E8 ? ? ? ? E9 ? ? ? ? 48 85 C9 0F 84 ? ? ? ? 48 8B 01
-			constexpr std::uintptr_t SKIP_FUNC = 0x0086B810;	// 1_5_97
+			constexpr std::uint64_t CALL_FUNC = 50485;
+			constexpr std::uint64_t SKIP_FUNC = 50447;
 			constexpr std::size_t CAVE_START = 0x138;
 			constexpr std::size_t CAVE_END = 0x2A9;
 			constexpr std::size_t JUMP_OUT = 0x2AB;
@@ -366,10 +337,8 @@ namespace Hooks
 		}
 
 		if (*Settings::smithingMenuPatch) {
-			// 40 57 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 89 5C 24 48 48 89 6C 24 50 48 89 74 24 58 48 8B E9 8B 81 54 01 00 00
-			constexpr std::uintptr_t CALL_FUNC = 0x0086CA10;	// 1_5_97
-			// 48 8B C4 56 57 41 56 48 83 EC 70 48 C7 40 B8 FE FF FF FF 48 89 58 18 48 89 68 20 48 8B F1
-			constexpr std::uintptr_t SKIP_FUNC = 0x0086E490;	// 1_5_97
+			constexpr std::uint64_t CALL_FUNC = 50451;
+			constexpr std::uint64_t SKIP_FUNC = 50477;
 			constexpr std::size_t CAVE_START = 0x7C;
 			constexpr std::size_t CAVE_END = 0x191;
 			constexpr std::size_t JUMP_OUT = 0x1E5;
@@ -383,12 +352,10 @@ namespace Hooks
 		}
 
 		{
-			// 40 57 48 83 EC 30 48 C7 44 24 20 FE FF FF FF 48 89 5C 24 48 48 89 6C 24 50 48 89 74 24 58 48 8B F9 0F B6 81 1D 02 00 00
-			constexpr std::uintptr_t CALL_FUNC = 0x0086EE80;	// 1_5_97
+			constexpr std::uint64_t CALL_FUNC = 50487;
 
 			if (*Settings::enchantmentCraftedPatch) {
-				// 40 55 56 57 41 54 41 55 41 56 41 57 48 81 EC 80 00 00 00 48 C7 44 24 50 FE FF FF FF
-				constexpr std::uintptr_t SKIP_FUNC = 0x0086C640;	// 1_5_97
+				constexpr std::uint64_t SKIP_FUNC = 50450;
 				constexpr std::size_t CAVE_START = 0x160;
 				constexpr std::size_t CAVE_END = 0x1FD;
 				constexpr std::size_t JUMP_OUT = 0x260;
