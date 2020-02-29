@@ -30,17 +30,11 @@ namespace Hooks
 		}
 
 
-		template <std::uint64_t FUNC_ID, std::size_t CAVE_START, std::size_t CAVE_END, std::size_t JUMP_OUT>
-		void InstallSubMenuPatch(std::uintptr_t a_skipFuncAddr)
+		namespace Impl
 		{
-			constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
-			constexpr UInt8 NOP = 0x90;
-
-			REL::Offset<std::uintptr_t> funcBase = REL::ID(FUNC_ID);
-
 			struct Patch : SKSE::CodeGenerator
 			{
-				Patch(std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator()
+				Patch(std::size_t a_size, std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(a_size)
 				{
 					Xbyak::Label callLbl;
 					Xbyak::Label retLbl;
@@ -55,8 +49,37 @@ namespace Hooks
 					dq(a_retAddr);
 				}
 			};
+		}
 
-			Patch patch(a_skipFuncAddr, funcBase.GetAddress() + JUMP_OUT);
+
+		struct SubMenuPatchCode : SKSE::CodeGenerator
+		{
+			SubMenuPatchCode(std::size_t a_size, std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(a_size)
+			{
+				Xbyak::Label callLbl;
+				Xbyak::Label retLbl;
+
+				call(ptr[rip + callLbl]);
+				jmp(ptr[rip + retLbl]);
+
+				L(callLbl);
+				dq(a_callAddr);
+
+				L(retLbl);
+				dq(a_retAddr);
+			}
+		};
+
+
+		template <std::uint64_t FUNC_ID, std::size_t CAVE_START, std::size_t CAVE_END, std::size_t JUMP_OUT>
+		void InstallSubMenuPatch(std::uintptr_t a_skipFuncAddr)
+		{
+			constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
+			constexpr UInt8 NOP = 0x90;
+
+			REL::Offset<std::uintptr_t> funcBase = REL::ID(FUNC_ID);
+
+			SubMenuPatchCode patch(CAVE_SIZE, a_skipFuncAddr, funcBase.GetAddress() + JUMP_OUT);
 			patch.finalize();
 
 			for (std::size_t i = 0; i < patch.getSize(); ++i) {
@@ -79,7 +102,7 @@ namespace Hooks
 		}
 
 
-		RE::InventoryEntryData* GetEquippedEntryData(RE::AIProcess* a_process, bool a_leftHand)
+		RE::InventoryEntryData* GetEquippedEntryData(RE::AIProcess* a_process, [[maybe_unused]] bool a_leftHand)
 		{
 			auto middleHigh = a_process->middleHigh;
 			if (!middleHigh) {
@@ -208,10 +231,8 @@ namespace Hooks
 				auto trampoline = SKSE::GetTrampoline();
 				trampoline->Write5Call(funcBase.GetAddress() + 0x2F, &GetEquippedEntryData);
 
-				{
-					REL::Offset<std::uintptr_t> funcBase = REL::ID(39407);
-					trampoline->Write5Call(funcBase.GetAddress() + 0x32, &GetEquippedEntryData);
-				}
+				REL::Offset<std::uintptr_t> funcBase2 = REL::ID(39407);
+				trampoline->Write5Call(funcBase2.GetAddress() + 0x32, &GetEquippedEntryData);
 			}
 
 			_MESSAGE("Installled poison patch");
@@ -232,7 +253,6 @@ namespace Hooks
 		void InstallEnchantmentLearnedPatch()
 		{
 			constexpr std::uint64_t SKIP_FUNC = 50459;
-			constexpr std::size_t JUMP_OUT = 0x1EB;
 			constexpr UInt8 NOP = 0x90;
 
 			REL::Offset<std::uintptr_t> funcBase = REL::ID(SKIP_FUNC);
@@ -283,6 +303,7 @@ namespace Hooks
 					}
 				};
 
+				constexpr std::size_t JUMP_OUT = 0x1EB;
 				Patch patch(unrestricted_cast<std::uintptr_t>(NotifyEnchantmentLearned), funcBase.GetAddress() + JUMP_OUT);
 				patch.finalize();
 
