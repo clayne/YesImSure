@@ -95,7 +95,7 @@ namespace Hooks
 		{
 			constexpr std::size_t JUMP_OUT = 0x148;
 
-			const REL::Relocation<std::uintptr_t> funcBase{ REL::ID(39406) };
+			const REL::Relocation<std::uintptr_t> funcBase{ REL::ID(40481) };
 
 			// nop until callback gets loaded
 			{
@@ -186,7 +186,7 @@ namespace Hooks
 				auto& trampoline = SKSE::GetTrampoline();
 				trampoline.write_call<5>(funcBase.address() + 0x2F, &GetEquippedEntryData);
 
-				const REL::Relocation<std::uintptr_t> funcBase2{ REL::ID(39407) };
+				const REL::Relocation<std::uintptr_t> funcBase2{ REL::ID(40482) };
 				trampoline.write_call<5>(funcBase2.address() + 0x32, &GetEquippedEntryData);
 			}
 
@@ -205,16 +205,16 @@ namespace Hooks
 
 		void InstallEnchantmentLearnedPatch()
 		{
-			constexpr std::uint64_t SKIP_FUNC = 50459;
+			constexpr std::uint64_t SKIP_FUNC = 51363;
 
 			const REL::Relocation<std::uintptr_t> funcBase{ REL::ID(SKIP_FUNC) };
 
 			// skip "are you sure?"
 			{
-				constexpr std::uint64_t CALL_FUNC = 50440;
-				constexpr std::size_t CAVE_START = 0xBB;
-				constexpr std::size_t CAVE_END = 0x1D3;
-				constexpr std::size_t JUMP_OUT = 0x38D;
+				constexpr std::uint64_t CALL_FUNC = 51344;
+				constexpr std::size_t CAVE_START = 0xC2;
+				constexpr std::size_t CAVE_END = 0x1D7;
+				constexpr std::size_t JUMP_OUT = 0x4DF;
 				const auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
 				InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 			}
@@ -270,12 +270,12 @@ namespace Hooks
 
 		void CloseEnchantingMenu()
 		{
-			auto uiStr = RE::InterfaceStrings::GetSingleton();
-			auto factory = RE::MessageDataFactoryManager::GetSingleton();
-			auto creator = factory->GetCreator<RE::BSUIMessageData>(uiStr->bsUIMessageData);
-			auto msg = creator->Create();
+			const auto uiStr = RE::InterfaceStrings::GetSingleton();
+			const auto factory = RE::MessageDataFactoryManager::GetSingleton();
+			const auto creator = factory->GetCreator<RE::BSUIMessageData>(uiStr->bsUIMessageData);
+			const auto msg = creator->Create();
 			msg->fixedStr = "Cancel";
-			auto uiQueue = RE::UIMessageQueue::GetSingleton();
+			const auto uiQueue = RE::UIMessageQueue::GetSingleton();
 			uiQueue->AddMessage(uiStr->craftingMenu, RE::UI_MESSAGE_TYPE::kUserEvent, msg);
 		}
 	}
@@ -283,34 +283,34 @@ namespace Hooks
 	void Install()
 	{
 		if (*Settings::ConstructibleObjectMenu) {
-			constexpr std::uint64_t CALL_FUNC = 50452;
-			constexpr std::uint64_t SKIP_FUNC = 50476;
-			constexpr std::size_t CAVE_START = 0x5F;
-			constexpr std::size_t CAVE_END = 0x174;
-			constexpr std::size_t JUMP_OUT = 0x192;
-			auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::ConstructibleObjectMenu, SKIP_FUNC>);
+			constexpr std::uint64_t CALL_FUNC = 51357;
+			constexpr std::uint64_t SKIP_FUNC = 51369;
+			constexpr std::size_t CAVE_START = 0x5A;
+			constexpr std::size_t CAVE_END = 0x169;
+			constexpr std::size_t JUMP_OUT = 0x187;
+			const auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::ConstructibleObjectMenu, SKIP_FUNC>);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 			logger::debug("Installled constructible object menu patch"sv);
 		}
 
 		if (*Settings::AlchemyMenu) {
-			constexpr std::uint64_t CALL_FUNC = 50485;
-			constexpr std::uint64_t SKIP_FUNC = 50447;
-			constexpr std::size_t CAVE_START = 0x138;
-			constexpr std::size_t CAVE_END = 0x2A9;
-			constexpr std::size_t JUMP_OUT = 0x2AB;
-			auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::AlchemyMenu, SKIP_FUNC>);
+			constexpr std::uint64_t CALL_FUNC = 51377;
+			constexpr std::uint64_t SKIP_FUNC = 51352;
+			constexpr std::size_t CAVE_START = 0x14B;
+			constexpr std::size_t CAVE_END = 0x2A0;
+			constexpr std::size_t JUMP_OUT = 0x2A0;
+			const auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::AlchemyMenu, SKIP_FUNC>);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 			logger::debug("Installled alchemy menu patch"sv);
 		}
 
 		if (*Settings::SmithingMenu) {
-			constexpr std::uint64_t CALL_FUNC = 50451;
-			constexpr std::uint64_t SKIP_FUNC = 50477;
-			constexpr std::size_t CAVE_START = 0x7C;
+			constexpr std::uint64_t CALL_FUNC = 51356;
+			constexpr std::uint64_t SKIP_FUNC = 51370;
+			constexpr std::size_t CAVE_START = 0x7D;
 			constexpr std::size_t CAVE_END = 0x191;
-			constexpr std::size_t JUMP_OUT = 0x1E5;
-			auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::SmithingMenu, SKIP_FUNC>);
+			constexpr std::size_t JUMP_OUT = 0x1E4;
+			const auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::SmithingMenu, SKIP_FUNC>);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 			logger::debug("Installled smithing menu patch"sv);
 		}
@@ -320,23 +320,23 @@ namespace Hooks
 		}
 
 		{
-			constexpr std::uint64_t CALL_FUNC = 50487;
+			constexpr std::uint64_t CALL_FUNC = 51379;
 
 			if (*Settings::EnchantmentCrafted) {
-				constexpr std::uint64_t SKIP_FUNC = 50450;
-				constexpr std::size_t CAVE_START = 0x160;
-				constexpr std::size_t CAVE_END = 0x1FD;
-				constexpr std::size_t JUMP_OUT = 0x260;
-				auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
+				constexpr std::uint64_t SKIP_FUNC = 51355;
+				constexpr std::size_t CAVE_START = 0x185;
+				constexpr std::size_t CAVE_END = 0x23F;
+				constexpr std::size_t JUMP_OUT = 0x2C2;
+				const auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
 				InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 				logger::debug("Installled enchantment crafted patch"sv);
 			}
 
 			if (*Settings::EnchantingMenuExit) {
-				constexpr std::size_t CAVE_START = 0x74;
-				constexpr std::size_t CAVE_END = 0x111;
-				constexpr std::size_t JUMP_OUT = 0x111;
-				auto fnAddr = reinterpret_cast<std::uintptr_t>(CloseEnchantingMenu);
+				constexpr std::size_t CAVE_START = 0x6F;
+				constexpr std::size_t CAVE_END = 0x129;
+				constexpr std::size_t JUMP_OUT = 0x129;
+				const auto fnAddr = reinterpret_cast<std::uintptr_t>(CloseEnchantingMenu);
 				InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 				logger::debug("Installled enchanting menu exit patch"sv);
 			}
