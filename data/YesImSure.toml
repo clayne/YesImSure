@@ -1,0 +1,8 @@
+[Patches]
+ConstructibleObjectMenu = true
+AlchemyMenu = true
+SmithingMenu = true
+EnchantmentLearned = false
+EnchantmentCrafted = false
+EnchantingMenuExit = true
+Poison = true

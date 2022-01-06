@@ -1,17 +1,6 @@
 #include "Hooks.h"
 
-#include <cassert>
-#include <cstdio>
-#include <memory>
-
 #include "Settings.h"
-
-#include "RE/Skyrim.h"
-#include "REL/Relocation.h"
-#include "SKSE/API.h"
-#include "SKSE/CodeGenerator.h"
-#include "SKSE/SafeWrite.h"
-
 
 namespace Hooks
 {
@@ -20,41 +9,18 @@ namespace Hooks
 		template <class T, std::uint64_t FUNC_ID>
 		void SkipSubMenuMenuPrompt()
 		{
-			using func_t = void(T*);
-			REL::Offset<func_t*> func = REL::ID(FUNC_ID);
-
-			auto ui = RE::UI::GetSingleton();
-			auto craftingMenu = ui->GetMenu<RE::CraftingMenu>();
-			auto subMenu = static_cast<T*>(craftingMenu->subMenu);
+			REL::Offset<void(T*)> func = REL::ID(FUNC_ID);
+			const auto ui = RE::UI::GetSingleton();
+			const auto craftingMenu = ui->GetMenu<RE::CraftingMenu>();
+			const auto subMenu = static_cast<T*>(craftingMenu->subMenu);
 			func(subMenu);
 		}
 
-
-		namespace Impl
+		struct SubMenuPatchCode :
+			public Xbyak::CodeGenerator
 		{
-			struct Patch : SKSE::CodeGenerator
-			{
-				Patch(std::size_t a_size, std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(a_size)
-				{
-					Xbyak::Label callLbl;
-					Xbyak::Label retLbl;
-
-					call(ptr[rip + callLbl]);
-					jmp(ptr[rip + retLbl]);
-
-					L(callLbl);
-					dq(a_callAddr);
-
-					L(retLbl);
-					dq(a_retAddr);
-				}
-			};
-		}
-
-
-		struct SubMenuPatchCode : SKSE::CodeGenerator
-		{
-			SubMenuPatchCode(std::size_t a_size, std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(a_size)
+		public:
+			SubMenuPatchCode(std::size_t a_callAddr, std::size_t a_retAddr)
 			{
 				Xbyak::Label callLbl;
 				Xbyak::Label retLbl;
@@ -70,46 +36,40 @@ namespace Hooks
 			}
 		};
 
-
 		template <std::uint64_t FUNC_ID, std::size_t CAVE_START, std::size_t CAVE_END, std::size_t JUMP_OUT>
 		void InstallSubMenuPatch(std::uintptr_t a_skipFuncAddr)
 		{
 			constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
-			constexpr UInt8 NOP = 0x90;
 
-			REL::Offset<std::uintptr_t> funcBase = REL::ID(FUNC_ID);
+			const REL::Relocation<std::uintptr_t> target{ REL::ID(FUNC_ID), CAVE_START };
 
-			SubMenuPatchCode patch(CAVE_SIZE, a_skipFuncAddr, funcBase.GetAddress() + JUMP_OUT);
-			patch.finalize();
+			SubMenuPatchCode patch(a_skipFuncAddr, funcBase.GetAddress() + JUMP_OUT);
+			patch.ready();
+			assert(patch.getSize() <= CAVE_SIZE);
 
-			for (std::size_t i = 0; i < patch.getSize(); ++i) {
-				SKSE::SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
-			}
-
-			for (std::size_t i = CAVE_START + patch.getSize(); i < CAVE_END; ++i) {
-				SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
-			}
+			REL::safe_fill(target.address(), REL::NOP, CAVE_SIZE);
+			REL::safe_write(
+				target.address(),
+				std::span{ patch.getCode<const std::byte*>(), patch.getSize() });
 		}
-
 
 		void RefreshInventoryMenu()
 		{
-			auto ui = RE::UI::GetSingleton();
-			auto invMenu = ui->GetMenu<RE::InventoryMenu>();
+			const auto ui = RE::UI::GetSingleton();
+			const auto invMenu = ui->GetMenu<RE::InventoryMenu>();
 			if (invMenu && invMenu->itemList) {
 				invMenu->itemList->Update();
 			}
 		}
 
-
 		RE::InventoryEntryData* GetEquippedEntryData(RE::AIProcess* a_process, [[maybe_unused]] bool a_leftHand)
 		{
-			auto middleHigh = a_process->middleHigh;
+			const auto middleHigh = a_process->middleHigh;
 			if (!middleHigh) {
-				return 0;
+				return nullptr;
 			}
 
-			auto hand = middleHigh->rightHand;
+			const auto hand = middleHigh->rightHand;
 			if (hand && hand->object && hand->object->Is(RE::FormType::Weapon)) {
 				if (!hand->extraLists) {
 					return hand;
@@ -131,22 +91,17 @@ namespace Hooks
 			return middleHigh->leftHand ? middleHigh->leftHand : middleHigh->rightHand;
 		}
 
-
 		void InstallPoisonPatch()
 		{
 			constexpr std::size_t JUMP_OUT = 0x148;
-			constexpr UInt8 NOP = 0x90;
 
-			REL::Offset<std::uintptr_t> funcBase = REL::ID(39406);
+			const REL::Relocation<std::uintptr_t> funcBase{ REL::ID(39406) };
 
 			// nop until callback gets loaded
 			{
 				constexpr std::size_t CAVE_START = 0xA3;
 				constexpr std::size_t CAVE_END = 0xD7;
-
-				for (std::size_t i = CAVE_START; i < CAVE_END; ++i) {
-					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
-				}
+				REL::safe_fill(funcBase.address() + CAVE_START, REL::NOP, CAVE_END - CAVE_START);
 			}
 
 			// hook callback
@@ -155,9 +110,11 @@ namespace Hooks
 				constexpr std::size_t CAVE_END = 0x112;
 				constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
 
-				struct Patch : SKSE::CodeGenerator
+				struct Patch :
+					public Xbyak::CodeGenerator
 				{
-					Patch(std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(CAVE_SIZE)
+				public:
+					Patch(std::size_t a_callAddr, std::size_t a_retAddr)
 					{
 						Xbyak::Label callLbl;
 						Xbyak::Label retLbl;
@@ -175,16 +132,14 @@ namespace Hooks
 					}
 				};
 
-				Patch patch(unrestricted_cast<std::uintptr_t>(&RefreshInventoryMenu), funcBase.GetAddress() + JUMP_OUT);
-				patch.finalize();
+				Patch patch(reinterpret_cast<std::uintptr_t>(&RefreshInventoryMenu), funcBase.address() + JUMP_OUT);
+				patch.ready();
+				assert(patch.getSize() <= CAVE_SIZE);
 
-				for (std::size_t i = 0; i < patch.getSize(); ++i) {
-					SKSE::SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
-				}
-
-				for (std::size_t i = CAVE_START + patch.getSize(); i < CAVE_END; ++i) {
-					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
-				}
+				REL::safe_fill(funcBase.address() + CAVE_START, REL::NOP, CAVE_SIZE);
+				REL::safe_write(
+					funcBase.address() + CAVE_START,
+					std::span{ patch.getCode<const std::byte*>(), patch.getSize() });
 			}
 
 			// swap messagebox error for debug notification
@@ -193,9 +148,11 @@ namespace Hooks
 				constexpr std::size_t CAVE_END = 0x148;
 				constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
 
-				struct Patch : SKSE::CodeGenerator
+				struct Patch :
+					public Xbyak::CodeGenerator
 				{
-					Patch(std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(CAVE_SIZE)
+				public:
+					Patch(std::size_t a_callAddr, std::size_t a_retAddr)
 					{
 						Xbyak::Label callLbl;
 						Xbyak::Label retLbl;
@@ -213,49 +170,44 @@ namespace Hooks
 					}
 				};
 
-				REL::Offset<std::uintptr_t> dbgNotif(RE::Offset::DebugNotification);
-				Patch patch(dbgNotif.GetAddress(), funcBase.GetAddress() + JUMP_OUT);
-				patch.finalize();
+				const REL::Relocation<std::uintptr_t> dbgNotif{ REL::ID(52933) };
+				Patch patch(dbgNotif.address(), funcBase.address() + JUMP_OUT);
+				patch.ready();
+				assert(patch.getSize() <= CAVE_SIZE);
 
-				for (std::size_t i = 0; i < patch.getSize(); ++i) {
-					SKSE::SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
-				}
-
-				for (std::size_t i = CAVE_START + patch.getSize(); i < CAVE_END; ++i) {
-					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
-				}
+				REL::safe_fill(funcBase.address() + CAVE_START, REL::NOP, CAVE_SIZE);
+				REL::safe_write(
+					funcBase.address() + CAVE_START,
+					std::span{ patch.getCode<const std::byte*>(), patch.getSize() });
 			}
 
 			// Fix for applying poison to left hand
 			{
-				auto trampoline = SKSE::GetTrampoline();
-				trampoline->Write5Call(funcBase.GetAddress() + 0x2F, &GetEquippedEntryData);
+				auto& trampoline = SKSE::GetTrampoline();
+				trampoline.write_call<5>(funcBase.address() + 0x2F, &GetEquippedEntryData);
 
-				REL::Offset<std::uintptr_t> funcBase2 = REL::ID(39407);
-				trampoline->Write5Call(funcBase2.GetAddress() + 0x32, &GetEquippedEntryData);
+				const REL::Relocation<std::uintptr_t> funcBase2{ REL::ID(39407) };
+				trampoline.write_call<5>(funcBase2.address() + 0x32, &GetEquippedEntryData);
 			}
 
-			_MESSAGE("Installled poison patch");
+			logger::debug("Installled poison patch"sv);
 		}
-
 
 		void NotifyEnchantmentLearned(const char* a_fmt, RE::TESForm* a_item)
 		{
-			auto fullName = a_item->As<RE::TESFullName>();
-			auto name = fullName ? fullName->GetFullName() : "";
+			const auto fullName = a_item->As<RE::TESFullName>();
+			const auto name = fullName ? fullName->GetFullName() : "";
 			std::size_t len = std::snprintf(0, 0, a_fmt, name) + 1;
-			auto msg = std::make_unique<char[]>(len);
+			const auto msg = std::make_unique<char[]>(len);
 			std::snprintf(msg.get(), len, a_fmt, name);
 			RE::DebugNotification(msg.get());
 		}
 
-
 		void InstallEnchantmentLearnedPatch()
 		{
 			constexpr std::uint64_t SKIP_FUNC = 50459;
-			constexpr UInt8 NOP = 0x90;
 
-			REL::Offset<std::uintptr_t> funcBase = REL::ID(SKIP_FUNC);
+			const REL::Relocation<std::uintptr_t> funcBase{ REL::ID(SKIP_FUNC) };
 
 			// skip "are you sure?"
 			{
@@ -263,7 +215,7 @@ namespace Hooks
 				constexpr std::size_t CAVE_START = 0xBB;
 				constexpr std::size_t CAVE_END = 0x1D3;
 				constexpr std::size_t JUMP_OUT = 0x38D;
-				auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
+				const auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
 				InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
 			}
 
@@ -271,10 +223,7 @@ namespace Hooks
 			{
 				constexpr std::size_t CAVE_START = 0x15D;
 				constexpr std::size_t CAVE_END = 0x1A7;
-
-				for (std::size_t i = CAVE_START; i < CAVE_END; ++i) {
-					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
-				}
+				REL::safe_fill(funcBase.address() + CAVE_START, REL::NOP, CAVE_END - CAVE_START);
 			}
 
 			// swap messagebox for debug notification
@@ -283,15 +232,17 @@ namespace Hooks
 				constexpr std::size_t CAVE_END = 0x1EB;
 				constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
 
-				struct Patch : SKSE::CodeGenerator
+				struct Patch :
+					public Xbyak::CodeGenerator
 				{
-					Patch(std::size_t a_callAddr, std::size_t a_retAddr) : SKSE::CodeGenerator(CAVE_SIZE)
+				public:
+					Patch(std::size_t a_callAddr, std::size_t a_retAddr)
 					{
 						Xbyak::Label callLbl;
 						Xbyak::Label retLbl;
 
-						mov(rcx, rbx);	// rbx == const char*
-						mov(rdx, rsi);	// rsi == TESForm*
+						mov(rcx, rbx);  // rbx == const char*
+						mov(rdx, rsi);  // rsi == TESForm*
 						call(ptr[rip + callLbl]);
 						jmp(ptr[rip + retLbl]);
 
@@ -304,21 +255,18 @@ namespace Hooks
 				};
 
 				constexpr std::size_t JUMP_OUT = 0x1EB;
-				Patch patch(unrestricted_cast<std::uintptr_t>(NotifyEnchantmentLearned), funcBase.GetAddress() + JUMP_OUT);
-				patch.finalize();
+				Patch patch(reinterpret_cast<std::uintptr_t>(NotifyEnchantmentLearned), funcBase.address() + JUMP_OUT);
+				patch.ready();
+				assert(patch.getSize() <= CAVE_SIZE);
 
-				for (std::size_t i = 0; i < patch.getSize(); ++i) {
-					SKSE::SafeWrite8(funcBase.GetAddress() + CAVE_START + i, patch.getCode()[i]);
-				}
-
-				for (std::size_t i = CAVE_START + patch.getSize(); i < CAVE_END; ++i) {
-					SKSE::SafeWrite8(funcBase.GetAddress() + i, NOP);
-				}
+				REL::safe_fill(funcBase.address() + CAVE_START, REL::NOP, CAVE_SIZE);
+				REL::safe_write(
+					funcBase.address() + CAVE_START,
+					std::span{ patch.getCode<const std::byte*>(), patch.getSize() });
 			}
 
-			_MESSAGE("Installled enchantment learned patch");
+			logger::debug("Installled enchantment learned patch"sv);
 		}
-
 
 		void CloseEnchantingMenu()
 		{
@@ -332,73 +280,72 @@ namespace Hooks
 		}
 	}
 
-
 	void Install()
 	{
-		if (*Settings::constructibleObjectMenuPatch) {
+		if (*Settings::ConstructibleObjectMenu) {
 			constexpr std::uint64_t CALL_FUNC = 50452;
 			constexpr std::uint64_t SKIP_FUNC = 50476;
 			constexpr std::size_t CAVE_START = 0x5F;
 			constexpr std::size_t CAVE_END = 0x174;
 			constexpr std::size_t JUMP_OUT = 0x192;
-			auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::ConstructibleObjectMenu, SKIP_FUNC>);
+			auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::ConstructibleObjectMenu, SKIP_FUNC>);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-			_MESSAGE("Installled constructible object menu patch");
+			logger::debug("Installled constructible object menu patch"sv);
 		}
 
-		if (*Settings::alchemyMenuPatch) {
+		if (*Settings::AlchemyMenu) {
 			constexpr std::uint64_t CALL_FUNC = 50485;
 			constexpr std::uint64_t SKIP_FUNC = 50447;
 			constexpr std::size_t CAVE_START = 0x138;
 			constexpr std::size_t CAVE_END = 0x2A9;
 			constexpr std::size_t JUMP_OUT = 0x2AB;
-			auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::AlchemyMenu, SKIP_FUNC>);
+			auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::AlchemyMenu, SKIP_FUNC>);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-			_MESSAGE("Installled alchemy menu patch");
+			logger::debug("Installled alchemy menu patch"sv);
 		}
 
-		if (*Settings::smithingMenuPatch) {
+		if (*Settings::SmithingMenu) {
 			constexpr std::uint64_t CALL_FUNC = 50451;
 			constexpr std::uint64_t SKIP_FUNC = 50477;
 			constexpr std::size_t CAVE_START = 0x7C;
 			constexpr std::size_t CAVE_END = 0x191;
 			constexpr std::size_t JUMP_OUT = 0x1E5;
-			auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::SmithingMenu, SKIP_FUNC>);
+			auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::SmithingMenu, SKIP_FUNC>);
 			InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-			_MESSAGE("Installled smithing menu patch");
+			logger::debug("Installled smithing menu patch"sv);
 		}
 
-		if (*Settings::enchantmentLearnedPatch) {
+		if (*Settings::EnchantmentLearned) {
 			InstallEnchantmentLearnedPatch();
 		}
 
 		{
 			constexpr std::uint64_t CALL_FUNC = 50487;
 
-			if (*Settings::enchantmentCraftedPatch) {
+			if (*Settings::EnchantmentCrafted) {
 				constexpr std::uint64_t SKIP_FUNC = 50450;
 				constexpr std::size_t CAVE_START = 0x160;
 				constexpr std::size_t CAVE_END = 0x1FD;
 				constexpr std::size_t JUMP_OUT = 0x260;
-				auto fnAddr = unrestricted_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
+				auto fnAddr = reinterpret_cast<std::uintptr_t>(SkipSubMenuMenuPrompt<RE::CraftingSubMenus::EnchantConstructMenu, SKIP_FUNC>);
 				InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-				_MESSAGE("Installled enchantment crafted patch");
+				logger::debug("Installled enchantment crafted patch"sv);
 			}
 
-			if (*Settings::enchantingMenuExitPatch) {
+			if (*Settings::EnchantingMenuExit) {
 				constexpr std::size_t CAVE_START = 0x74;
 				constexpr std::size_t CAVE_END = 0x111;
 				constexpr std::size_t JUMP_OUT = 0x111;
-				auto fnAddr = unrestricted_cast<std::uintptr_t>(CloseEnchantingMenu);
+				auto fnAddr = reinterpret_cast<std::uintptr_t>(CloseEnchantingMenu);
 				InstallSubMenuPatch<CALL_FUNC, CAVE_START, CAVE_END, JUMP_OUT>(fnAddr);
-				_MESSAGE("Installled enchanting menu exit patch");
+				logger::debug("Installled enchanting menu exit patch"sv);
 			}
 		}
 
-		if (*Settings::poisonPatch) {
+		if (*Settings::Poison) {
 			InstallPoisonPatch();
 		}
 
-		_MESSAGE("Installed hooks");
+		logger::debug("Installed hooks"sv);
 	}
 }
