@@ -9,7 +9,7 @@ namespace Settings
 {
 	using bSetting = AutoTOML::bSetting;
 
-	inline void load()
+	inline void Load()
 	{
 		try {
 			const auto table = toml::parse_file("Data/SKSE/Plugins/YesImSure.toml"s);
