@@ -9,7 +9,7 @@ namespace Hooks
 		template <class T, std::uint64_t FUNC_ID>
 		void SkipSubMenuMenuPrompt()
 		{
-			REL::Offset<void(T*)> func = REL::ID(FUNC_ID);
+			REL::Relocation<void(T*)> func{ REL::ID(FUNC_ID) };
 			const auto ui = RE::UI::GetSingleton();
 			const auto craftingMenu = ui->GetMenu<RE::CraftingMenu>();
 			const auto subMenu = static_cast<T*>(craftingMenu->subMenu);
@@ -41,15 +41,15 @@ namespace Hooks
 		{
 			constexpr std::size_t CAVE_SIZE = CAVE_END - CAVE_START;
 
-			const REL::Relocation<std::uintptr_t> target{ REL::ID(FUNC_ID), CAVE_START };
+			const REL::Relocation<std::uintptr_t> funcBase{ REL::ID(FUNC_ID) };
 
-			SubMenuPatchCode patch(a_skipFuncAddr, funcBase.GetAddress() + JUMP_OUT);
+			SubMenuPatchCode patch(a_skipFuncAddr, funcBase.address() + JUMP_OUT);
 			patch.ready();
 			assert(patch.getSize() <= CAVE_SIZE);
 
-			REL::safe_fill(target.address(), REL::NOP, CAVE_SIZE);
+			REL::safe_fill(funcBase.address() + CAVE_START, REL::NOP, CAVE_SIZE);
 			REL::safe_write(
-				target.address(),
+				funcBase.address() + CAVE_START,
 				std::span{ patch.getCode<const std::byte*>(), patch.getSize() });
 		}
 
